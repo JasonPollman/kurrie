@@ -1,0 +1,59 @@
+{
+  "name": "kurrie",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": {
+    "name": "Jason Pollman",
+    "email": "jasonjpollman@gmail.com"
+  },
+  "main": "index.js",
+  "scripts": {
+    "test": "NODE_ENV=test jest",
+    "test:cover": "NODE_ENV=test jest --coverage",
+    "clean": "rm -rf ./dist || 0",
+    "build": "npm run clean && npx babel src -d dist --ignore=**/*.test.js",
+    "perf": "npm install lodash rambda curry kurry curriable chalk && npm run build && node ./dist/perf"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-core": "^6.26.3",
+    "babel-eslint": "^9.0.0",
+    "babel-preset-env": "^1.7.0",
+    "babel-preset-stage-2": "^6.24.1",
+    "chai": "^4.1.2",
+    "eslint": "^5.6.0",
+    "eslint-config-airbnb": "^17.1.0",
+    "eslint-plugin-import": "^2.14.0",
+    "eslint-plugin-jsx-a11y": "^6.1.1",
+    "eslint-plugin-react": "^7.11.1",
+    "jest": "^23.6.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageReporters": [
+      "json",
+      "lcov",
+      "text"
+    ],
+    "collectCoverageFrom": [
+      "src/**"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "lines": 99,
+        "statements": 99,
+        "functions": 99,
+        "branches": 99
+      }
+    }
+  },
+  "dependencies": {
+    "chalk": "^2.4.1",
+    "curriable": "^1.1.0",
+    "curry": "^1.2.0",
+    "kurry": "0.0.2",
+    "lodash": "^4.17.11",
+    "rambda": "^1.2.2"
+  }
+}
