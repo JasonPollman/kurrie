@@ -1,7 +1,7 @@
 {
   "name": "kurrie",
   "version": "1.0.0",
-  "description": "",
+  "description": "JavaScript's highly optimized and speedy currying function",
   "license": "ISC",
   "author": {
     "name": "Jason Pollman",
@@ -11,21 +11,25 @@
   "scripts": {
     "test": "NODE_ENV=test jest",
     "test:cover": "NODE_ENV=test jest --coverage",
-    "clean": "rm -rf ./dist || 0",
-    "build": "npm run clean && npx babel src -d dist --ignore=**/*.test.js",
-    "perf": "npm install lodash rambda curry kurry curriable chalk && npm run build && node ./dist/perf"
+    "clean": "rm -rf ./dist || 0 && mkdir dist",
+    "build:node": "npx babel ./src/kurrie.js -o dist/kurrie.js",
+    "build:browser": "NODE_ENV=browser npx babel ./src/kurrie.js -o dist/kurrie.min.js --source-maps",
+    "build": "npm run clean && npm run build:node && npm run build:browser",
+    "bench": "npm install lodash rambda curry kurry curriable chalk --no-save && npm run build && clear && npx babel-node ./benchmark"
   },
   "devDependencies": {
     "babel-cli": "^6.26.0",
     "babel-core": "^6.26.3",
     "babel-eslint": "^9.0.0",
+    "babel-plugin-transform-es2015-modules-umd": "^6.24.1",
     "babel-preset-env": "^1.7.0",
+    "babel-preset-minify": "^0.5.0",
     "babel-preset-stage-2": "^6.24.1",
-    "chai": "^4.1.2",
-    "eslint": "^5.6.0",
+    "chai": "^4.2.0",
+    "eslint": "^5.6.1",
     "eslint-config-airbnb": "^17.1.0",
     "eslint-plugin-import": "^2.14.0",
-    "eslint-plugin-jsx-a11y": "^6.1.1",
+    "eslint-plugin-jsx-a11y": "^6.1.2",
     "eslint-plugin-react": "^7.11.1",
     "jest": "^23.6.0"
   },
@@ -47,13 +51,5 @@
         "branches": 99
       }
     }
-  },
-  "dependencies": {
-    "chalk": "^2.4.1",
-    "curriable": "^1.1.0",
-    "curry": "^1.2.0",
-    "kurry": "0.0.2",
-    "lodash": "^4.17.11",
-    "rambda": "^1.2.2"
   }
 }

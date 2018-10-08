@@ -13,5 +13,20 @@
         }
       }
     ]
-  ]
+  ],
+  "env": {
+    "browser": {
+      "sourceMaps": true,
+      "compact": true,
+      "minified": true,
+      "retainLines": false,
+      "comments": false,
+      "presets": [
+        "minify"
+      ],
+      "plugins": [
+        "transform-es2015-modules-umd"
+      ]
+    }
+  }
 }
