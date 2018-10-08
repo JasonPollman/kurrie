@@ -69,12 +69,12 @@ forEachUser (greet ('Hello'))  // => ['Hello John!', 'Hello Ed!', 'Hello Albert!
 
 ## API
 
-#### kurrie({function} fn[, {number=} arity]) => {function}
+### kurrie({function} fn[, {number=} arity]) => {function}
 The default export. Curries functions up to `arity`, which defaults to `fn.length`.
 
 
 
-#### kurrie.to({number} arity, {function} fn) => {function}
+### kurrie.to({number} arity, {function} fn) => {function}
 **An alias for the `kurrie` method that is arity first.**    
 `kurrie.to` offers a cleaner syntax when you need to specify an arity value.
 
@@ -90,7 +90,7 @@ sum (1) (2) (undefined); // => 6
 sum (1) (2) (10);        // => 13
 ```
 
-#### kurrie.proto({function} fn[, {number=} arity][, {number=} thisArgPosition]]) => {function}
+### kurrie.proto({function} fn[, {number=} arity][, {number=} thisArgPosition]]) => {function}
 **A convenience method to curry prototype methods**.    
 Curries the given prototype method passing the *last* argument as the `this` value.
 
