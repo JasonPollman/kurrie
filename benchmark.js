@@ -44,7 +44,7 @@ const filter = kurrie.proto(Array.prototype.filter);
 const flabel = label => (label === 'Vanilla' ? dim : cyan)(padStart(label, 9));
 
 const TOTALS = {};
-const TEST_ITERATIONS = 6e6;
+const TEST_ITERATIONS = 5e6;
 
 function invokeTimes(fn, result, args) {
   const check = isFunction(result) ? result : isEqual;
@@ -143,10 +143,8 @@ function invokeTest({
 // Functions to be curried by the tests below...
 const sum = (a, b) => a + b;
 const pairs = (a, b) => [a, b];
-const pairsRest = (a, b, ...rest) => [a, b, ...rest];
 const triples = (a, b, c) => [a, b, c];
 const quadruples = (a, b, c, d) => [a, b, c, d];
-const quadruplesRest = (a, b, c, d, ...rest) => [a, b, c, d, ...rest];
 const long = (a, b, c, d, e, f, g, h, i, j) => a + b + c + d + e + f + g + h + i + j;
 const mapSimple = (iteratee, collection) => collection.map(iteratee);
 const pow = (y, x) => x ** y;
@@ -203,7 +201,7 @@ const TEST_DATA = [
     ],
   },
   {
-    label: 'Noary: x() => "foo"',
+    label: 'Nullary: x() => "foo"',
     result: 'foo',
     test: x => x(),
     skip: false,
@@ -665,6 +663,46 @@ const TEST_DATA = [
     ],
   },
   {
+    label: 'Multi-Curry x4: map(pow(_, 2))(map(pow(_, 2))([1, 2, 3, 4, 5, 6]))',
+    result: [4, 16, 256, 65536],
+    skip: false,
+    test: (__, m, p) => m(p(__, 2))(m(p(__, 2))([1, 2, 3, 4])),
+    tests: [
+      {
+        label: 'Vanilla',
+        prepare: () => [
+          null,
+          iteratee => collection => collection.map(iteratee),
+          (__1, x) => y => x ** y,
+        ],
+      },
+      {
+        label: 'Kurrie',
+        prepare: () => [_, kurrie(mapSimple), kurrie(pow)],
+      },
+      {
+        label: 'Lodash',
+        prepare: () => [lodash, lodash.curry(mapSimple), lodash.curry(pow)],
+      },
+      {
+        label: 'Rambda',
+        prepare: () => [R.__, R.curry(mapSimple), R.curry(pow)],
+      },
+      {
+        label: 'Curry',
+        isUnsupported: true,
+      },
+      {
+        label: 'Kurry',
+        isUnsupported: true,
+      },
+      {
+        label: 'Curriable',
+        prepare: () => [curriable.__, curriable(mapSimple), curriable(pow)],
+      },
+    ],
+  },
+  {
     label: 'Trinary 1: triples(1)(2)(3) => [1, 2, 3]',
     skip: false,
     result: [1, 2, 3],
@@ -781,6 +819,82 @@ const TEST_DATA = [
       {
         label: 'Vanilla',
         prepare: () => [a => b => c => d => e => f => g => h => i => j => (
+          a + b + c + d + e + f + g + h + i + j
+        )],
+      },
+      {
+        label: 'Kurrie',
+        prepare: () => [kurrie(long)],
+      },
+      {
+        label: 'Lodash',
+        prepare: () => [lodash.curry(long)],
+      },
+      {
+        label: 'Rambda',
+        prepare: () => [R.curry(long)],
+      },
+      {
+        label: 'Curry',
+        prepare: () => [curry(long)],
+      },
+      {
+        label: 'Kurry',
+        prepare: () => [kurry.automix(long)],
+      },
+      {
+        label: 'Curriable',
+        prepare: () => [curriable(long)],
+      },
+    ],
+  },
+  {
+    label: 'Lots of Arguments #2: add(2, 2, 2, 2)(2, 2, 2, 2, 2)(2) => 20',
+    result: 20,
+    skip: false,
+    test: add => add(2, 2, 2, 2)(2, 2, 2, 2, 2)(2),
+    tests: [
+      {
+        label: 'Vanilla',
+        prepare: () => [(a, b, c, d) => (e, f, g, h, i) => j => (
+          a + b + c + d + e + f + g + h + i + j
+        )],
+      },
+      {
+        label: 'Kurrie',
+        prepare: () => [kurrie(long)],
+      },
+      {
+        label: 'Lodash',
+        prepare: () => [lodash.curry(long)],
+      },
+      {
+        label: 'Rambda',
+        prepare: () => [R.curry(long)],
+      },
+      {
+        label: 'Curry',
+        prepare: () => [curry(long)],
+      },
+      {
+        label: 'Kurry',
+        prepare: () => [kurry.automix(long)],
+      },
+      {
+        label: 'Curriable',
+        prepare: () => [curriable(long)],
+      },
+    ],
+  },
+  {
+    label: 'Lots of Arguments #3: add(2, 2, 2, 2, 2, 2, 2, 2, 2, 2) => 20',
+    result: 20,
+    skip: false,
+    test: add => add(2, 2, 2, 2, 2, 2, 2, 2, 2, 2),
+    tests: [
+      {
+        label: 'Vanilla',
+        prepare: () => [(a, b, c, d, e, f, g, h, i, j) => (
           a + b + c + d + e + f + g + h + i + j
         )],
       },
@@ -992,89 +1106,6 @@ const TEST_DATA = [
       {
         label: 'Curriable',
         prepare: () => [curriable.__, curriable(quadruples)],
-      },
-    ],
-  },
-  {
-    label: 'Check for Leaky Placeholders 2: pairsRest(1, 2, 3, _, 4) => [1, 2, 3, 4]',
-    result: (result) => {
-      assert(!result.find(x => typeof x !== 'number') && result.length === 5);
-      return isEqual(result, [1, 2, 3, undefined, 4]);
-    },
-    skip: false,
-    test: (p, prs) => prs(1, 2, 3, p, 4),
-    tests: [
-      {
-        label: 'Vanilla',
-        // eslint-disable-next-line no-unused-vars
-        prepare: () => [null, (a, b, c, _1, d) => [a, b, c, undefined, d]],
-      },
-      {
-        label: 'Kurrie',
-        prepare: () => [_, kurrie(pairsRest)],
-      },
-      {
-        label: 'Lodash',
-        prepare: () => [lodash, lodash.curry(pairsRest)],
-      },
-      {
-        label: 'Rambda',
-        prepare: () => [R.__, R.curry(pairsRest)],
-      },
-      {
-        label: 'Curry',
-        isUnsupported: true,
-      },
-      {
-        label: 'Kurry',
-        isUnsupported: true,
-      },
-      {
-        label: 'Curriable',
-        prepare: () => [curriable.__, curriable(pairsRest)],
-      },
-    ],
-  },
-  {
-    label: 'Check for Leaky Placeholders 2: quadruplesRest(1, 2, 3, _, _, _, _, _)(_, 4)(4, _, _) => [1, 2, 3, 4]',
-    result: (result) => {
-      assert(!result.find(x => typeof x !== 'number') && result.length === 5);
-      return isEqual(result, [1, 2, 3, 4, 4]);
-    },
-    skip: false,
-    test: (p, quads) => quads(1, 2, 3, p, p, p, p, p)(p, 4)(4, p, p),
-    tests: [
-      {
-        label: 'Vanilla',
-        prepare: () => [
-          null,
-          // eslint-disable-next-line no-unused-vars
-          (x, y, z, _1, _2, _3, _4, _5) => (_6, _7) => (q, _8, _9) => [x, y, z, q, _7],
-        ],
-      },
-      {
-        label: 'Kurrie',
-        prepare: () => [_, kurrie(quadruplesRest)],
-      },
-      {
-        label: 'Lodash',
-        prepare: () => [lodash, lodash.curry(quadruplesRest)],
-      },
-      {
-        label: 'Rambda',
-        prepare: () => [R.__, R.curry(quadruplesRest)],
-      },
-      {
-        label: 'Curry',
-        isUnsupported: true,
-      },
-      {
-        label: 'Kurry',
-        isUnsupported: true,
-      },
-      {
-        label: 'Curriable',
-        prepare: () => [curriable.__, curriable(quadruplesRest)],
       },
     ],
   },
