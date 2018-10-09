@@ -26,7 +26,7 @@
     "build:browser": "NODE_ENV=browser npx babel ./src/kurrie.js -o dist/kurrie.min.js --source-maps",
     "build": "npm run clean && npm run build:node && npm run build:browser",
     "bench": "npm install lodash rambda curry kurry curriable chalk --no-save && npm run build && clear && npx babel-node ./benchmark",
-    "prepublish": "npm run build"
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "babel-cli": "^6.26.0",
