@@ -14,6 +14,10 @@
     "fp"
   ],
   "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JasonPollman/kurrie"
+  },
   "scripts": {
     "test": "NODE_ENV=test jest",
     "test:cover": "NODE_ENV=test jest --coverage",
