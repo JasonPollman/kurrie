@@ -18,11 +18,15 @@
     "browser": {
       "sourceMaps": true,
       "compact": true,
-      "minified": true,
       "retainLines": false,
       "comments": false,
       "presets": [
-        "minify"
+        ["minify", {
+          "keepFnName": true,
+          "mangle": {
+            "exclude": ["_", "__"]
+          }
+        }]
       ],
       "plugins": [
         "transform-es2015-modules-umd"

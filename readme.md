@@ -6,6 +6,10 @@ JavaScript's highly optimized and speedy currying function.
 npm install kurrie --save
 ```
 
+**Distributions:**
+- `dist/kurrie.min.js` is UMD and can be used in browsers.
+- `dist/kurrie.js` is CommonJS, and is used by node.
+
 ## Motivation
 Mostly for fun. However, as I was comparing `kurrie` to other curry functions available on npm,
 I found that most of the larger libraries were pretty slow by comparison. `kurrie` focuses on
@@ -78,7 +82,7 @@ The default export. Curries the given function up to `arity` (which defaults to 
 | capped   | `true`      | If true, no arguments passed to `fn` will exceed `arity`. If false arguments exceeding arity may "leak" into invocations. |
 
 **You should note the behavior of fn.length in regard to rest and default parameters!**
-See [MDN] for documentation on `Function#length`. (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/length).
+See [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/length) for documentation on `Function#length`
 
 For example:
 
