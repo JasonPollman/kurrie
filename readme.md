@@ -229,14 +229,14 @@ The following libraries were compared to `kurrie`:
 
 ### Average Operations Per Second
 
-| Rank | Library   | Average Operations Per Second | % Avg   |
-| ---- | --------- | ----------------------------- | ------- |
-| 1    | Kurrie    | 4,209,498                     | 177%    |
-| 2    | Curriable | 3,480,912                     | 146%    |
-| 3    | Rambda    | 2,222,195                     | 94%     |
-| 4    | Curry     | 1,621,990                     | 69%     |
-| 5    | Lodash    | 1,384,082                     | 59%     |
-| 6    | Kurry     | 1,354,722                     | 57%     |
+| Rank  | Library    | Average Operations Per Second | % Avg   |
+| ----- | ---------- | ----------------------------- | ------- |
+| **1** | **Kurrie** | **4,209,498**                | **177%** |
+| 2     | Curriable  | 3,480,912                     | 146%    |
+| 3     | Rambda     | 2,222,195                     | 94%     |
+| 4     | Curry      | 1,621,990                     | 69%     |
+| 5     | Lodash     | 1,384,082                     | 59%     |
+| 6     | Kurry      | 1,354,722                     | 57%     |
 
 *Benchmarks were performed on an 2.8 GHz Intel Core i7 MacBook Pro, 16GB Memory using Node.js version 8.7.0.*
 
