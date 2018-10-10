@@ -1,155 +1,52 @@
 /**
- * Performance tests comparing kurrie to other popular currying libraries.
- * The packages listed below aren't listed in the package.json and you must
- * install them yourself. Running `npm run perf` will do this for you.
- * Note, this is pretty sloppy stuff.
- * @since 10/6/18
+ * Benchmarks kurrie vs. lodash, rambda, curried, curry, and kurrie.
+ * @since 10/10/18
  * @file
  */
 
 /* eslint-disable import/no-extraneous-dependencies, no-underscore-dangle, require-jsdoc */
 
-import R from 'rambda';
-import curry from 'curry';
-import kurry from 'kurry';
-import lodash from 'lodash';
-import assert from 'assert';
-import curriable from 'curriable';
-
-import {
-  dim,
-  red,
-  bold,
-  cyan,
-  green,
-  yellow,
-} from 'chalk';
-
-import kurrie, { _ } from './dist/kurrie';
-
-const {
-  get,
-  each,
-  keyBy,
-  isEqual,
-  padStart,
-  identity,
-  stubArray,
-  isFunction,
-} = lodash;
+const R = require('rambda');
+const chalk = require('chalk');
+const curry = require('curry');
+const kurry = require('kurry');
+const lodash = require('lodash');
+const assert = require('assert');
+const Promise = require('bluebird');
+const Benchmark = require('benchmark');
+const curriable = require('curriable').default;
+const kurrie = require('./dist/kurrie').default;
 
 const { log } = console;
-const map = kurrie.proto(Array.prototype.map);
-const filter = kurrie.proto(Array.prototype.filter);
-const flabel = label => (label === 'Vanilla' ? dim : cyan)(padStart(label, 9));
 
-const TOTALS = {};
-const TEST_ITERATIONS = 5e6;
+const {
+  map,
+  each,
+  sortBy,
+  isEqual,
+  padStart,
+} = lodash;
 
-function invokeTimes(fn, result, args) {
-  const check = isFunction(result) ? result : isEqual;
+const {
+  dim,
+  red,
+  cyan,
+  bold,
+  green,
+  yellow,
+} = chalk;
 
-  return () => {
-    for (let i = 0; i < TEST_ITERATIONS; i++) {
-      assert(check(fn(...args), result));
-    }
-  };
-}
-
-function executeSingleTest(operation) {
-  let duration = 0;
-  let message = null;
-  let valid = true;
-
-  const start = Date.now();
-
-  try {
-    operation();
-    duration = Date.now() - start;
-  } catch (e) {
-    duration = Date.now() - start;
-    valid = false;
-
-    if (e.code === 'ERR_ASSERTION') {
-      message = red('[Invalid Results]');
-    } else {
-      message = red(`[Error: ${e.message}]`);
-    }
-  }
-
-  return {
-    valid,
-    duration,
-    message,
-  };
-}
-
-const colors = [dim, green, identity, identity, yellow, yellow, red];
-
-function total(group, test, duration, valid) {
-  TOTALS[group] = TOTALS[group] || {};
-  TOTALS[group][test] = {
-    valid,
-    duration,
-  };
-}
-
-function toRanked(collection, attribute, reverse = true) {
-  const array = lodash.map(collection, (fields, key) => ({
-    ...fields,
-    key,
-    value: get(fields, attribute, fields),
-  }));
-
-  const sorted = array.sort((a, b) => {
-    const reverseConstant = reverse ? 1 : -1;
-    if (a.key === 'Vanilla') return reverseConstant;
-    if (a.valid === false) return 1 - reverseConstant;
-    if (b.valid === false) return reverseConstant;
-    return a.value - b.value;
-  });
-
-  if (reverse) sorted.reverse();
-  const data = sorted.map((props, rank) => ({ ...props, rank, color: colors[rank] }));
-  return keyBy(data, 'key');
-}
-
-function invokeTest({
-  test,
-  label,
-  result,
-  prepare = stubArray,
-  isUnsupported,
-  group,
-}) {
-  if (isUnsupported) {
-    return {
-      library: label,
-      duration: 0,
-      valid: false,
-      message: yellow('[Unsupported]'),
-    };
-  }
-
-  const results = executeSingleTest(invokeTimes(test, result, prepare()));
-  total(group, label, results.duration, results.valid);
-
-  return {
-    ...results,
-    library: label,
-  };
-}
-
-// Functions to be curried by the tests below...
-const sum = (a, b) => a + b;
-const pairs = (a, b) => [a, b];
-const triples = (a, b, c) => [a, b, c];
-const quadruples = (a, b, c, d) => [a, b, c, d];
-const long = (a, b, c, d, e, f, g, h, i, j) => a + b + c + d + e + f + g + h + i + j;
-const mapSimple = (iteratee, collection) => collection.map(iteratee);
+// Functions that will be curried for testing.
+const sum = (x, y) => x + y;
 const pow = (y, x) => x ** y;
+const long = (a, b, c, d, e, f, g, h, i, j) => a + b + c + d + e + f + g + h + i + j;
+const pairs = (x, y) => [x, y];
 const point = (x, y) => ({ x, y });
-const foo = () => 'foo';
+const triples = (x, y, z) => [x, y, z];
+const nullary = () => 'foo';
+const identity = x => x;
+const mapSimple = (iteratee, collection) => collection.map(iteratee);
+const quadruples = (a, b, c, d) => [a, b, c, d];
 
 const object = {
   foo(five, four) {
@@ -160,198 +57,327 @@ const object = {
   },
 };
 
-/**
- * This is the data set used to execute "tests".
- * @type {Array<Object>}
- */
-const TEST_DATA = [
+const colors = {
+  0: dim,
+  1: green,
+  2: identity,
+  3: identity,
+  4: yellow,
+  5: yellow,
+  6: red,
+};
+
+const formatStat = ({ error, operations }, library) => ({
+  error,
+  operations,
+  library,
+  message: error ? `[Error: ${error.message}]` : null,
+});
+
+const flabel = label => bold(cyan(padStart(label, 11)));
+const getColor = (item, i) => ({ ...item, color: item.error ? bold.red : colors[i] });
+const toFixed = n => n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+const formatTotal = ({ succeeded, operations }, library) => ({ library, succeeded, operations });
+
+function rank(results) {
+  return sortBy(map(results, formatStat), ['error', 'operations']).reverse().map(getColor);
+}
+
+function rankTotals(results) {
+  return sortBy(map(results, formatTotal), ['operations']).reverse().map(getColor);
+}
+
+function printTotals(stats) {
+  log(bold('Average Operations Per Second:\r\n'));
+
+  each(rankTotals(stats.total), (data) => {
+    const {
+      color,
+      library,
+      succeeded,
+      operations,
+    } = data;
+
+    log('%s %s', flabel(library), color(toFixed(operations / succeeded)));
+  });
+
+  log('\r\n');
+}
+
+function handleSuiteCompleted(name, stats) {
+  return () => {
+    log(bold('Test: %s\r\n'), name);
+
+    rank(stats.tests[name]).forEach((data) => {
+      const {
+        color,
+        library,
+        message,
+        operations,
+      } = data;
+
+      return message
+        ? log('%s %s', flabel(library), color(message))
+        : log('%s %s', flabel(library), color(toFixed(operations)));
+    });
+
+    log('\r\n');
+  };
+}
+
+function handleCycleCompleted(stats) {
+  return ({ target }) => {
+    const { hz, name, error } = target;
+    const [suite, library] = name.split(/::/);
+
+    /* eslint-disable no-param-reassign */
+    stats.tests = stats.tests || {};
+    stats.total = stats.total || {};
+
+    stats.tests[suite] = stats.tests[suite] || {};
+    stats.tests[suite][library] = {
+      error,
+      operations: hz || NaN,
+    };
+
+    stats.total[library] = stats.total[library] || {};
+    stats.total[library].operations = stats.total[library].operations || 0;
+    stats.total[library].succeeded = stats.total[library].succeeded || 0;
+
+    stats.total[library].operations += hz;
+    stats.total[library].succeeded += error ? 0 : 1;
+    /* eslint-enable no-param-reassign */
+  };
+}
+
+async function run(stats, suites) {
+  await Promise.map(suites, (suiteSettings) => {
+    const {
+      name,
+      skip,
+    } = suiteSettings;
+
+    if (skip) return Promise.resolve();
+    const suite = new Benchmark.Suite();
+
+    suiteSettings.tests.forEach((settings) => {
+      const options = { ...suiteSettings, ...settings };
+
+      const {
+        test,
+        library,
+        prepare = () => [],
+        validate = () => true,
+        isUnsupported,
+      } = options;
+
+      if (isUnsupported) return;
+      const prepared = prepare();
+
+      suite.add(`${name}::${library}`, () => {
+        assert(validate(test(...prepared)));
+      });
+    });
+
+    return new Promise(resolve => suite
+      .on('cycle', handleCycleCompleted(stats))
+      .on('complete', handleSuiteCompleted(name, stats))
+      .on('complete', resolve)
+      .run({ async: true }),
+    );
+  });
+
+  return stats;
+}
+
+const config = [
   {
-    label: 'Curry Function Creation: curry((a, b) => [a, b])',
-    result: lodash.isFunction,
+    name: 'Curry Function Creation: fn((a, b) => [a, b])',
     skip: false,
+    validate: result => typeof result === 'function',
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         test: () => a => b => [a, b],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         test: () => kurrie(pairs),
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         test: () => lodash.curry(pairs),
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         test: () => R.curry(pairs),
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         test: () => curry(pairs),
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         test: () => kurry.automix(pairs),
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         test: () => curriable(pairs),
       },
     ],
   },
   {
-    label: 'Nullary: x() => "foo"',
-    result: 'foo',
-    test: x => x(),
+    name: 'Nullary: fn() => "foo"',
     skip: false,
+    validate: result => result === 'foo',
+    test: fn => fn(),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [() => 'foo'],
       },
       {
-        label: 'Kurrie',
-        prepare: () => [kurrie(foo)],
+        library: 'Kurrie',
+        prepare: () => [kurrie(nullary)],
       },
       {
-        label: 'Lodash',
-        prepare: () => [lodash.curry(foo)],
+        library: 'Lodash',
+        prepare: () => [lodash.curry(nullary)],
       },
       {
-        label: 'Rambda',
-        prepare: () => [R.curry(foo)],
+        library: 'Rambda',
+        prepare: () => [R.curry(nullary)],
       },
       {
-        label: 'Curry',
-        prepare: () => [curry(foo)],
+        library: 'Curry',
+        prepare: () => [curry(nullary)],
       },
       {
-        label: 'Kurry',
-        prepare: () => [kurry.automix(foo)],
+        library: 'Kurry',
+        prepare: () => [kurry.automix(nullary)],
       },
       {
-        label: 'Curriable',
-        prepare: () => [curriable(foo)],
+        library: 'Curriable',
+        prepare: () => [curriable(nullary)],
       },
     ],
   },
   {
-    label: 'Unary: x(y) => y',
-    result: 'expected',
-    test: x => x('expected'),
+    name: 'Unary: fn(x) => x',
     skip: false,
+    test: fn => fn(5),
+    validate: x => x === 5,
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [x => x],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(identity)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(identity)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(identity)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(identity)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(identity)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(identity)],
       },
     ],
   },
   {
-    label: 'Binary: x(y)(z) => ({ y, z })',
-    result: { x: 1, y: 2 },
+    name: 'Binary: fn(x)(y) => ({ x, y })',
+    validate: results => isEqual(results, { x: 1, y: 2 }),
     test: x => x(1)(2),
     skip: false,
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [x => y => ({ x, y })],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(point)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(point)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(point)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(point)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(point)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(point)],
       },
     ],
   },
   {
-    label: 'Binary 2 — Full Args: x(y, z) => ({ y, z })',
-    result: { x: 1, y: 2 },
+    name: 'Binary, Full Args: fn(x, y) => ({ x, y })',
+    validate: results => isEqual(results, { x: 1, y: 2 }),
     test: x => x(1, 2),
     skip: false,
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [(x, y) => ({ x, y })],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(point)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(point)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(point)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(point)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(point)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(point)],
       },
     ],
   },
   {
-    label: 'Retains Context: x(5)(4) => ({ this, five: 5, four: 4 })',
-    result: { this: object, five: 5, four: 4 },
+    name: 'Retains Context: fn(5)(4) => ({ this, five: 5, four: 4 })',
+    validate: result => isEqual(result, { this: object, five: 5, four: 4 }),
     test: x => x(5)(4),
     skip: false,
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [function first(five) {
           const self = this;
 
@@ -361,39 +387,39 @@ const TEST_DATA = [
         }.bind(object)],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(object.foo.bind(object))],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(object.foo.bind(object))],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(object.foo.bind(object))],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(object.foo.bind(object))],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(object.foo.bind(object))],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(object.foo.bind(object))],
       },
     ],
   },
   {
-    label: 'Retains Context #2: x(1)(2)(3) => [this, 1, 2, 3]',
+    name: 'Retains Context #2: x(1)(2)(3) => [this, 1, 2, 3]',
     result: [object, 1, 2, 3],
     test: x => x(1)(2)(3),
     skip: false,
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [function first(a) {
           const self = this;
 
@@ -405,185 +431,185 @@ const TEST_DATA = [
         }.bind(object)],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(object.bar.bind(object))],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(object.bar.bind(object))],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(object.bar.bind(object))],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(object.bar.bind(object))],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(object.bar.bind(object))],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(object.bar.bind(object))],
       },
     ],
   },
   {
-    label: 'Called Without Arguments: x()()()(y) => y',
-    result: 'expected',
+    name: 'Called Without Arguments: fn()()()(x) => x',
+    result: result => isEqual(result, 'expected'),
     test: x => x()()()('expected'),
     skip: false,
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [
           () => () => () => y => y,
         ],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(identity)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(identity)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(identity)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(identity)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(identity)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(identity)],
       },
     ],
   },
   {
-    label: 'Called Without Arguments #2: x()(y)()(z)()(p)()(q) => [y, z, p, q]',
-    result: [1, 2, 3, 4],
+    name: 'Called Without Arguments #2: x()(y)()(z)()(p)()(q) => [y, z, p, q]',
+    result: result => isEqual(result, [1, 2, 3, 4]),
     test: x => x()(1)()(2)()(3)()(4),
     skip: false,
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [
           () => y => () => z => () => p => () => q => [y, z, p, q],
         ],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(quadruples)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(quadruples)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(quadruples)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(quadruples)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(quadruples)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(quadruples)],
       },
     ],
   },
   {
-    label: 'Summing: add(1)(2) => 3',
-    result: 3,
+    name: 'Summing: add(1)(2) => 3',
+    result: result => result === 3,
     test: add => add(1)(2),
     skip: false,
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [a => b => a + b],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(sum)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(sum)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(sum)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(sum)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(sum)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(sum)],
       },
     ],
   },
   {
-    label: 'Multi-Curry: map(pow(2))([1, 2, 3, 4, 5, 6])',
-    result: [1, 4, 9, 16, 25, 36],
+    name: 'Multi-Curry: map(pow(2))([1, 2, 3, 4, 5, 6])',
+    result: result => isEqual(result, [1, 4, 9, 16, 25, 36]),
     test: (m, p) => m(p(2))([1, 2, 3, 4, 5, 6]),
     skip: false,
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [
           iteratee => collection => collection.map(iteratee),
           y => x => x ** y,
         ],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(mapSimple), kurrie(pow)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(mapSimple), lodash.curry(pow)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(mapSimple), R.curry(pow)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(mapSimple), curry(pow)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(mapSimple), kurry.automix(pow)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(mapSimple), curriable(pow)],
       },
     ],
   },
   {
-    label: 'Multi-Curry x2: map(pow(2))(map(pow(2))([1, 2, 3, 4, 5, 6]))',
-    result: [1, 16, 81, 256, 625, 1296],
+    name: 'Multi-Curry x2: map(pow(2))(map(pow(2))([1, 2, 3, 4, 5, 6]))',
+    result: result => isEqual(result, [1, 16, 81, 256, 625, 1296]),
     skip: false,
     test: (m, p) => {
       const mp = m(p(2));
@@ -591,85 +617,85 @@ const TEST_DATA = [
     },
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [
           iteratee => collection => collection.map(iteratee),
           y => x => x ** y,
         ],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(mapSimple), kurrie(pow)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(mapSimple), lodash.curry(pow)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(mapSimple), R.curry(pow)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(mapSimple), curry(pow)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(mapSimple), kurry.automix(pow)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(mapSimple), curriable(pow)],
       },
     ],
   },
   {
-    label: 'Multi-Curry x3: map(pow(2))(map(pow(2))([1, 2, 3, 4, 5, 6]))',
-    result: [1, 16, 81, 256, 625, 1296],
+    name: 'Multi-Curry x3: map(pow(2))(map(pow(2))([1, 2, 3, 4, 5, 6]))',
+    result: result => isEqual(result, [1, 16, 81, 256, 625, 1296]),
     skip: false,
     test: (m, p) => m(p(2))(m(p(2))([1, 2, 3, 4, 5, 6])),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [
           iteratee => collection => collection.map(iteratee),
           y => x => x ** y,
         ],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(mapSimple), kurrie(pow)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(mapSimple), lodash.curry(pow)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(mapSimple), R.curry(pow)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(mapSimple), curry(pow)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(mapSimple), kurry.automix(pow)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(mapSimple), curriable(pow)],
       },
     ],
   },
   {
-    label: 'Multi-Curry x4: map(pow(_, 2))(map(pow(_, 2))([1, 2, 3, 4, 5, 6]))',
-    result: [4, 16, 256, 65536],
+    name: 'Multi-Curry x4: map(pow(_, 2))(map(pow(_, 2))([1, 2, 3, 4, 5, 6]))',
+    result: result => isEqual(result, [4, 16, 256, 65536]),
     skip: false,
     test: (__, m, p) => m(p(__, 2))(m(p(__, 2))([1, 2, 3, 4])),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [
           null,
           iteratee => collection => collection.map(iteratee),
@@ -677,529 +703,474 @@ const TEST_DATA = [
         ],
       },
       {
-        label: 'Kurrie',
-        prepare: () => [_, kurrie(mapSimple), kurrie(pow)],
+        library: 'Kurrie',
+        prepare: () => [kurrie._, kurrie(mapSimple), kurrie(pow)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash, lodash.curry(mapSimple), lodash.curry(pow)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.__, R.curry(mapSimple), R.curry(pow)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         isUnsupported: true,
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         isUnsupported: true,
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable.__, curriable(mapSimple), curriable(pow)],
       },
     ],
   },
   {
-    label: 'Trinary 1: triples(1)(2)(3) => [1, 2, 3]',
+    name: 'Trinary 1: triples(1)(2)(3) => [1, 2, 3]',
     skip: false,
-    result: [1, 2, 3],
+    result: result => isEqual(result, [1, 2, 3]),
     test: trip => trip(1)(2)(3),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [a => b => c => [a, b, c]],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(triples)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(triples)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(triples)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(triples)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(triples)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(triples)],
       },
     ],
   },
   {
-    label: 'Trinary 2: triples(1)(2, 3) => [1, 2, 3]',
+    name: 'Trinary 2: triples(1)(2, 3) => [1, 2, 3]',
     skip: false,
-    result: [1, 2, 3],
+    result: result => isEqual(result, [1, 2, 3]),
     test: trip => trip(1)(2, 3),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [a => (b, c) => [a, b, c]],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(triples)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(triples)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(triples)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(triples)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(triples)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(triples)],
       },
     ],
   },
   {
-    label: 'Quadernary 1: quadruples(1)(2)(3)(4) => [1, 2, 3, 4]',
-    result: [1, 2, 3, 4],
+    name: 'Quadernary 1: quadruples(1)(2)(3)(4) => [1, 2, 3, 4]',
+    result: result => isEqual(result, [1, 2, 3, 4]),
     skip: false,
     test: quad => quad(1)(2)(3)(4),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [a => b => c => d => [a, b, c, d]],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(quadruples)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(quadruples)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(quadruples)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(quadruples)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(quadruples)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(quadruples)],
       },
     ],
   },
   {
-    label: 'Lots of Arguments: add(2)(2)(2)(2)(2)(2)(2)(2)(2)(2) => 20',
-    result: 20,
+    name: 'Lots of Arguments: add(2)(2)(2)(2)(2)(2)(2)(2)(2)(2) => 20',
+    result: result => result === 20,
     skip: false,
     test: add => add(2)(2)(2)(2)(2)(2)(2)(2)(2)(2),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [a => b => c => d => e => f => g => h => i => j => (
           a + b + c + d + e + f + g + h + i + j
         )],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(long)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(long)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(long)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(long)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(long)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(long)],
       },
     ],
   },
   {
-    label: 'Lots of Arguments #2: add(2, 2, 2, 2)(2, 2, 2, 2, 2)(2) => 20',
-    result: 20,
+    name: 'Lots of Arguments #2: add(2, 2, 2, 2)(2, 2, 2, 2, 2)(2) => 20',
+    result: result => result === 20,
     skip: false,
     test: add => add(2, 2, 2, 2)(2, 2, 2, 2, 2)(2),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [(a, b, c, d) => (e, f, g, h, i) => j => (
           a + b + c + d + e + f + g + h + i + j
         )],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(long)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(long)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(long)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(long)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(long)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(long)],
       },
     ],
   },
   {
-    label: 'Lots of Arguments #3: add(2, 2, 2, 2, 2, 2, 2, 2, 2, 2) => 20',
-    result: 20,
+    name: 'Lots of Arguments #3: add(2, 2, 2, 2, 2, 2, 2, 2, 2, 2) => 20',
+    result: result => result === 20,
     skip: false,
     test: add => add(2, 2, 2, 2, 2, 2, 2, 2, 2, 2),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [(a, b, c, d, e, f, g, h, i, j) => (
           a + b + c + d + e + f + g + h + i + j
         )],
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie(long)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry(long)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry(long)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry(long)],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix(long)],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable(long)],
       },
     ],
   },
   {
-    label: 'Placeholders #1: add(_, 2)(1) => 3',
-    result: 3,
+    name: 'Placeholders #1: add(_, 2)(1) => 3',
+    result: result => result === 3,
     skip: false,
     test: (p, add) => add(p, 2)(1),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [null, (_1, x) => y => x + y],
       },
       {
-        label: 'Kurrie',
-        prepare: () => [_, kurrie(sum)],
+        library: 'Kurrie',
+        prepare: () => [kurrie._, kurrie(sum)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash, lodash.curry(sum)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.__, R.curry(sum)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         isUnsupported: true,
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         isUnsupported: true,
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable.__, curriable(sum)],
       },
     ],
   },
   {
-    label: 'Placeholders #2: quadruples(_, 2)(_, 3)(_, 4)(1) => [1, 2, 3, 4]',
-    result: [1, 2, 3, 4],
+    name: 'Placeholders #2: quadruples(_, 2)(_, 3)(_, 4)(1) => [1, 2, 3, 4]',
+    result: result => isEqual(result, [1, 2, 3, 4]),
     skip: false,
     test: (p, quads) => quads(p, 2)(p, 3)(p, 4)(1),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [null, (_1, x) => (_2, y) => (_3, z) => q => [q, x, y, z]],
       },
       {
-        label: 'Kurrie',
-        prepare: () => [_, kurrie(quadruples)],
+        library: 'Kurrie',
+        prepare: () => [kurrie._, kurrie(quadruples)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash, lodash.curry(quadruples)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.__, R.curry(quadruples)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         isUnsupported: true,
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         isUnsupported: true,
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable.__, curriable(quadruples)],
       },
     ],
   },
   {
-    label: 'Placeholders #3: quadruples(_, _, _, 4)(_, _, 3)(_, 2)(1) => [1, 2, 3, 4]',
-    result: [1, 2, 3, 4],
+    name: 'Placeholders #3: quadruples(_, _, _, 4)(_, _, 3)(_, 2)(1) => [1, 2, 3, 4]',
+    result: result => isEqual(result, [1, 2, 3, 4]),
     skip: false,
     test: (p, quads) => quads(p, p, p, 4)(p, p, 3)(p, 2)(1),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [null, (_1, _2, _3, x) => (_4, _5, y) => (_6, z) => q => [q, z, y, x]],
       },
       {
-        label: 'Kurrie',
-        prepare: () => [_, kurrie(quadruples)],
+        library: 'Kurrie',
+        prepare: () => [kurrie._, kurrie(quadruples)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash, lodash.curry(quadruples)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.__, R.curry(quadruples)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         isUnsupported: true,
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         isUnsupported: true,
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable.__, curriable(quadruples)],
       },
     ],
   },
   {
-    label: 'Placeholders #4: quadruples(_, _, _, 4)(_, _, 3, _)(_, 2, _)(1, _) => [1, 2, 3, 4]',
-    result: [1, 2, 3, 4],
+    name: 'Placeholders #4: quadruples(_, _, _, 4)(_, _, 3, _)(_, 2, _)(1, _) => [1, 2, 3, 4]',
+    result: result => isEqual(result, [1, 2, 3, 4]),
     skip: false,
     test: (p, quads) => quads(p, p, p, 4)(p, p, 3, p)(p, 2, p)(1, p),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         prepare: () => [null, (_1, _2, _3, x) => (
           // eslint-disable-next-line no-unused-vars
           (_4, _5, y, _6) => (_7, z, _8) => (q, _9) => [q, z, y, x]
         )],
       },
       {
-        label: 'Kurrie',
-        prepare: () => [_, kurrie(quadruples)],
+        library: 'Kurrie',
+        prepare: () => [kurrie._, kurrie(quadruples)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash, lodash.curry(quadruples)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.__, R.curry(quadruples)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         isUnsupported: true,
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         isUnsupported: true,
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable.__, curriable(quadruples)],
       },
     ],
   },
   {
-    label: 'Placeholders #5: quadruples(1, 2, 3, _, _, _, _, _)(_, 4)(4) => [1, 2, 3, 4]',
-    result: [1, 2, 3, 4],
+    name: 'Placeholders #5: quadruples(1, 2, 3, _, _, _, _, _)(_, 4)(4) => [1, 2, 3, 4]',
+    result: result => isEqual(result, [1, 2, 3, 4]),
     skip: false,
     test: (p, quads) => quads(1, 2, 3, p, p, p, p, p)(p, 4)(4),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         // eslint-disable-next-line no-unused-vars
         prepare: () => [null, (x, y, z, _1, _2, _3, _4, _5) => (_6, _7) => q => [x, y, z, q],
         ],
       },
       {
-        label: 'Kurrie',
-        prepare: () => [_, kurrie(quadruples)],
+        library: 'Kurrie',
+        prepare: () => [kurrie._, kurrie(quadruples)],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash, lodash.curry(quadruples)],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.__, R.curry(quadruples)],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         isUnsupported: true,
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         isUnsupported: true,
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable.__, curriable(quadruples)],
       },
     ],
   },
   {
-    label: 'Currying A Curried Function: curry(curry(curry(curry(pairs)))(1)))(2) => [1, 2]',
-    result: [1, 2],
+    name: 'Currying A Curried Function: curry(curry(curry(curry(pairs)))(1)))(2) => [1, 2]',
+    result: result => isEqual(result, [1, 2]),
     skip: false,
     test: k => k(k(k(k(pairs))(1)))(2),
     tests: [
       {
-        label: 'Vanilla',
+        library: 'Vanilla',
         isUnsupported: true,
       },
       {
-        label: 'Kurrie',
+        library: 'Kurrie',
         prepare: () => [kurrie],
       },
       {
-        label: 'Lodash',
+        library: 'Lodash',
         prepare: () => [lodash.curry],
       },
       {
-        label: 'Rambda',
+        library: 'Rambda',
         prepare: () => [R.curry],
       },
       {
-        label: 'Curry',
+        library: 'Curry',
         prepare: () => [curry],
       },
       {
-        label: 'Kurry',
+        library: 'Kurry',
         prepare: () => [kurry.automix],
       },
       {
-        label: 'Curriable',
+        library: 'Curriable',
         prepare: () => [curriable],
       },
     ],
   },
 ];
 
-const isActiveTest = ({ skip }) => !skip;
-
-function printOperationsPerSecond() {
-  log('%s\n', bold('[Operations Per Second]'));
-
-  const totalOps = {};
-  const totalTime = {};
-
-  each(TOTALS, (group) => {
-    each(group, ({ valid, duration }, library) => {
-      totalTime[library] = (totalTime[library] || 0) + duration;
-      if (valid) totalOps[library] = (totalOps[library] || 0) + TEST_ITERATIONS;
-    });
-  });
-
-  each(totalTime, (value, library) => {
-    totalOps[library] = (totalOps[library] / value) * 1000;
-  });
-
-  const ranked = toRanked(totalOps);
-  const baseline = ranked.Vanilla.value;
-
-  each(ranked, ({ value, color }, library) => {
-    const variance = padStart(Math.trunc(Math.abs(value / baseline * 100)), 4);
-    log('%s %s %s', flabel(library), color(padStart(Math.round(value).toLocaleString(), 10)), dim(variance.concat('%')));
-  });
-}
-
-const combineAttributes = kurrie((testSettings, librarySettings) => ({
-  ...testSettings,
-  ...librarySettings,
-  group: testSettings.label,
-}));
-
-function executeTests({ tests, ...testSettings }) {
-  log(bold(`Test \`${testSettings.label}\` [x${TEST_ITERATIONS.toLocaleString()}]\n`));
-  const results = map(invokeTest)(map(combineAttributes(testSettings))(tests));
-  const ranked = toRanked(keyBy(results, 'library'), 'duration', false);
-
-  each(ranked, ({
-    key,
-    value,
-    color,
-    message,
-  }) => {
-    log('%s %s', flabel(key), message || color(value.toLocaleString().concat('ms')));
-  });
-
-  log('\n');
-}
-
-(function main() {
-  map(executeTests)(filter(isActiveTest, TEST_DATA));
-  printOperationsPerSecond();
-  log('\n');
-}());
+run({}, config).then(printTotals).catch(e => log(e.stack));

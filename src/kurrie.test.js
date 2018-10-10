@@ -10,6 +10,7 @@ import kurrie, {
   curryTo,
   isCurried,
   curryProto,
+  getArityOf,
   getSourceFunction,
 } from './kurrie';
 
@@ -211,6 +212,46 @@ describe('kurrie', () => {
 
     it('Should return undefined for falsy values', () => {
       expect(getSourceFunction(null)).to.equal(undefined);
+    });
+  });
+
+  describe('getArityOf', () => {
+    it('Should return zero if passed a non-function value', () => {
+      expect(getArityOf(null)).to.equal(0);
+      expect(getArityOf([])).to.equal(0);
+      expect(getArityOf('foo')).to.equal(0);
+      expect(getArityOf(undefined)).to.equal(0);
+    });
+
+    it('Should return a curried function\'s arity (unary)', () => {
+      const source = x => x;
+      const curried = kurrie(source);
+
+      expect(getArityOf(curried)).to.equal(1);
+    });
+
+    it('Should return a function\'s arity (non-curried)', () => {
+      const source = (x, y) => x + y;
+      expect(getArityOf(source)).to.equal(2);
+    });
+
+    it('Should return a curried function\'s arity (binary)', () => {
+      const source = (x, y) => x + y;
+      const curried = kurrie(source);
+
+      expect(getArityOf(curried)).to.equal(2);
+      expect(getArityOf(curried(1))).to.equal(1);
+      expect(curried(1)(2)).to.equal(3);
+    });
+
+    it('Should return a curried function\'s arity (trinary)', () => {
+      const source = (x, y, z) => x + y + z;
+      const curried = kurrie(source);
+
+      expect(getArityOf(curried)).to.equal(3);
+      expect(getArityOf(curried(1))).to.equal(2);
+      expect(getArityOf(curried(1)(2))).to.equal(1);
+      expect(curried(1)(2)(3)).to.equal(6);
     });
   });
 

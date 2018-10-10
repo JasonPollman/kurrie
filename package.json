@@ -1,6 +1,6 @@
 {
   "name": "kurrie",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "JavaScript's highly optimized and speedy currying function",
   "license": "ISC",
   "author": {
@@ -25,7 +25,7 @@
     "build:node": "npx babel ./src/kurrie.js -o dist/kurrie.js",
     "build:browser": "NODE_ENV=browser npx babel ./src/kurrie.js -o dist/kurrie.min.js --source-maps",
     "build": "npm run clean && npm run build:node && npm run build:browser",
-    "bench": "npm install lodash rambda curry kurry curriable chalk --no-save && npm run build && clear && npx babel-node ./benchmark",
+    "bench": "npm install bluebird benchmark lodash rambda curry kurry curriable chalk --no-save && npm run build && clear && npx babel-node ./bench",
     "prepare": "npm run build"
   },
   "devDependencies": {

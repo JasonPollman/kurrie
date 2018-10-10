@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.isCurried = isCurried;
+exports.getArityOf = getArityOf;
 exports.getSourceFunction = getSourceFunction;
 exports.default = curry;
 exports.curryTo = curryTo;
@@ -44,6 +45,12 @@ var Sym = typeof Symbol !== 'function'
 var SOURCE_FUNCTION = Sym('SOURCE_FUNCTION');
 
 /**
+ * Used to map curried functions back to their original source function.
+ * @type {Sym}
+ */
+var ARITY = Sym('ARITY');
+
+/**
  * A default placeholder value.
  * Used for partial application to curried functions.
  * @type {Sym}
@@ -63,6 +70,16 @@ var __ = exports.__ = _;
  */
 function isCurried(fn) {
   return !!(fn && fn[SOURCE_FUNCTION]);
+}
+
+/**
+ * Gets the arity of a function.
+ * @param {function} fn The function to get the arity of.
+ * @returns {number} The function's arity.
+ * @export
+ */
+function getArityOf(fn) {
+  return typeof fn === 'function' ? fn[ARITY] || fn.length : 0;
 }
 
 /**
@@ -187,14 +204,15 @@ function create(fn, arity, capped) {
   // Called after the first invocation.
   // Previous arguments must be shallow copied
   // and combined with the current argument set.
-  function recurry(previousArgs) {
+  function recurry(previousArgs, currentArity) {
     function recurried() {
       if (!arguments.length) return recurried;
       var args = getArguments(previousArgs, arguments, arity);
 
-      return args.length < arity || hasPlaceholders(args, arity) ? recurry(args) : fn.apply(this, args);
+      return args.length < arity || hasPlaceholders(args, arity) ? recurry(args, currentArity - 1) : fn.apply(this, args);
     }
 
+    recurried[ARITY] = currentArity;
     recurried[SOURCE_FUNCTION] = fn;
     recurried.toString = toStringForCurried;
     return recurried;
@@ -206,9 +224,10 @@ function create(fn, arity, capped) {
     var size = arguments.length;
     if (!size) return curried;
 
-    return size < arity || hasPlaceholders(arguments, arity) ? recurry(arguments) : fn.apply(this, capped && size > arity ? cap(arguments, arity) : arguments);
+    return size < arity || hasPlaceholders(arguments, arity) ? recurry(arguments, arity - 1) : fn.apply(this, capped && size > arity ? cap(arguments, arity) : arguments);
   }
 
+  curried[ARITY] = arity;
   curried[SOURCE_FUNCTION] = fn;
   curried.toString = toStringForCurried;
   return curried;
@@ -254,7 +273,7 @@ function curry(fn) {
     throw new Error('Expected a function for parameter `fn`');
   }
 
-  // Don't curry a curried function or nullary functions.
+  // Don't curry nullary functions.
   return fn[SOURCE_FUNCTION] || arity <= 0 ? fn : create(fn, arity, capped);
 }
 
